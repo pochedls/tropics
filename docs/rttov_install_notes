@@ -1,0 +1,69 @@
+# Get source code
+mkdir /usr/workspace/pochedls/rttov
+# get RTTOV tarball
+From: https://nwp-saf.eumetsat.int/site/software/rttov/rttov-v13/
+# copy tarball to ~/code/rttov (e.g., from local desktop: scp ~/Desktop/rttov132.tar.xz oslic:/usr/workspace/pochedls/rttov/)
+cd /usr/workspace/pochedls/rttov
+tar -xvf rttov132.tar.xz
+
+# Download coefficients 
+cd emis_data
+wget https://nwp-saf.eumetsat.int/downloads/emis_data/cnrm_mwemis_amsu_mhs_data.tar
+wget https://nwp-saf.eumetsat.int/downloads/emis_data/telsem2_mw_atlas.tar.bz2
+wget https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov13/hydrotable/ScalingFactorForBulkProperties.rssp
+wget https://nwp-saf.eumetsat.int/downloads/rtcoef_rttov13/hydrotable/hydrotable_noaa_amsua.dat.bz2
+
+# Unpack coefficients
+tar -xjf telsem2_mw_atlas.tar.bz2
+rm telsem2_mw_atlas.tar.bz2
+tar -xvf cnrm_mwemis_amsu_mhs_data.tar
+rm cnrm_mwemis_amsu_mhs_data.tar
+mv ScalingFactorForBulkProperties.rssp ../rtcoef_rttov13/hydrotable/
+mv hydrotable_noaa_amsua.dat.bz2 /usr/workspace/pochedls/rttov/rtcoef_rttov13/hydrotable/
+cd /usr/workspace/pochedls/rttov/rtcoef_rttov13/hydrotable
+bzip2 -d hydrotable_noaa_amsua.dat.bz2
+
+# Create Conda environment
+mamba create -n rttov -c conda-forge hdf5 gfortran_linux-64 netcdf4 netcdf-fortran ipython matplotlib joblib xarray metpy h5py xesmf xcdat
+conda activate rttov
+# needed this in the past: gfortran_linux-64 h5py==2.6.0; pip install h5py
+
+# Create architecture file
+cp /usr/workspace/pochedls/rttov/build/arch/gfortran-openmp /usr/workspace/pochedls/rttov/build/arch/gfortran-openmp.orig
+# Note these results
+echo $CC
+echo $FC
+# Modify /usr/workspace/pochedls/rttov/build/arch/gfortran-openmp with the following:
+    # Update FC and FC77 with the result of "Echo $FC" 
+    # Something like: /usr/workspace/pochedls/bin/miniconda3/envs/rttov/bin/x86_64-conda-linux-gnu-gfortran
+    # Update CC with the result of "Echo $CC" 
+    # Something like /usr/workspace/pochedls/bin/miniconda3/envs/rttov/bin/x86_64-conda-linux-gnu-cc
+    # Add "-fPIC" to CFLAGS_ARCH
+# Modify /usr/workspace/pochedls/rttov/build/Makefile.local with the following (alter as appropriate): 
+    # HDF5_PREFIX  = /usr/workspace/pochedls/bin/miniconda3/envs/rttov/
+    # NETCDF_PREFIX  = /usr/workspace/pochedls/bin/miniconda3/envs/rttov/
+    # Uncomment the most common lines for: FFLAGS_HDF5, LDFLAGS_HDF5, FFLAGS_NETCDF, LDFLAGS_NETCDF (probably 4.2 or later; note from conda list)
+
+# Compile Code
+cd /usr/workspace/pochedls/rttov/src
+../build/rttov_compile.sh
+# Compile with gfortran-openmp, choose default options, ensure it is compiling with NetCDF and HDF, and compile with f2py Python wrapper
+
+# Test install
+cd /usr/workspace/pochedls/rttov/rttov_test
+./test_rttov13.sh ARCH=gfortran-openmp
+./test_fwd.sh ARCH=gfortran-openmp  # this is failing for AIRS/IASI, but I think this is because I have not downloaded the hyperspectral coefficients
+cd /usr/workspace/pochedls/rttov/wrapper
+python pyrttov_rttovscatt_example.py
+
+
+# Note!
+I needed to invoke this before compiling at times: 
+    LDFLAGS="-shared $LDFLAGS"
+
+It may also be possible to add this to the Makefile.local. For some reason, I didn't need to do this during this install. 
+See: https://github.com/numpy/numpy/issues/14222
+
+LD_LIBRARY_PATH=/home/pochedley1/bin/anaconda3/envs/rttov132/$LD_LIBRARY_PATH
+
+
